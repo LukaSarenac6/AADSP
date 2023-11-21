@@ -4,7 +4,7 @@
 #include <string.h>
 #include "common.h"
 
-
+#define INITGAINPROCESSING_ASM
 
 // IO Buffers
 __memY DSPfract sampleBuffer[MAX_NUM_CHANNEL][BLOCK_SIZE];
@@ -124,11 +124,14 @@ DSPfract fir_basic(DSPfract input, DSPfract* history)
 	return retAccum;
 }
 
+#ifdef INITGAINPROCESSING_ASM
+extern void initGainProcessing(DSPfract preGainValue);
+#else
 void initGainProcessing(DSPfract preGainValue)
 {
 	preGain = preGainValue;
 }
-
+#endif
 
 #ifdef GAINPROCESSING_ASM
 extern void gainProcessing(__memY DSPfract pIn[][BLOCK_SIZE],__memY DSPfract pOut[][BLOCK_SIZE]);

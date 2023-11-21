@@ -14,6 +14,7 @@ _BLOCK_SIZE .equ 16
 _FIR_ORDER .equ 50
 
 	.public _gainProcessing
+	.public _initGainProcessing
 	.extern _preGain
 	.extern _fir_basic
 	.extern _outputMode
@@ -21,6 +22,10 @@ _FIR_ORDER .equ 50
 	.extern _history1
 	.extern _history2	
 	.code_ovly
+	
+_initGainProcessing:
+	y1 = a0h
+	ret
 	
 _gainProcessing:
 
@@ -44,8 +49,8 @@ _gainProcessing:
 		#first stage, apply constant pre-Gain
  		#*samplePtrIn = *samplePtrIn * preGain;
  		x0 = ymem[i0]
- 		y0 = xmem[_preGain]
- 		a0 = x0 * y0
+ 		#y0 = xmem[_preGain]
+ 		a0 = x0 * y1
 		# second stage, set L channel out
 		#*samplePtrOut = *samplePtrIn;		
 		ymem[i1] = a0
@@ -107,8 +112,8 @@ _gainProcessing:
 											#first stage, apply constant pre-Gain
  		#*samplePtrIn = *samplePtrIn * preGain;
  		x0 = ymem[i0]
- 		y0 = xmem[_preGain]
- 		a0 = x0 * y0
+ 		#y0 = xmem[_preGain]
+ 		a0 = x0 * y1
 											# second stage, set R channel out
 		#*samplePtrOut = *samplePtrIn;		
 		ymem[i1] = a0; i1+=1			
