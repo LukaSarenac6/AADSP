@@ -5,19 +5,20 @@
 #include "common.h"
 
 
+
 // IO Buffers
-static DSPfract sampleBuffer[MAX_NUM_CHANNEL][BLOCK_SIZE];
+__memY DSPfract sampleBuffer[MAX_NUM_CHANNEL][BLOCK_SIZE];
 
 // Processing related variables
-static DSPfract preGain;
+DSPfract preGain;
 //static DSPfract variablesGain[INPUT_NUM_CHANNELS];
-static DSPfract limiterThreshold = 0.999;
+DSPfract limiterThreshold = 0.999;
 
-static char* enable;	/* enable = argv[2],  set enable to 1 to activate gainProcessing */
+DSPint enable;	/* enable = argv[2],  set enable to 1 to activate gainProcessing */
 
-static char* outputMode; /* outputMode = argv[3], 0 = 3_2_1, 1 = 2_0_0, 2 = 2_2_0 */
+DSPint outputMode = 1; /* outputMode = argv[3], 0 = 3_2_1, 1 = 2_0_0, 2 = 2_2_0 */
 
-static DSPfract firCoeffs[FIR_ORDER] = {
+DSPfract firCoeffs[FIR_ORDER] = {
 		FRACT_NUM(-0.01017879667124649500),
 		FRACT_NUM(-0.01029945035640465400),
 		FRACT_NUM(-0.01041579748452664700),
@@ -70,8 +71,8 @@ static DSPfract firCoeffs[FIR_ORDER] = {
 		FRACT_NUM(-0.01005394415493147400)
 };
 
-static DSPfract history1[FIR_ORDER] = { FRACT_NUM(0.0) };
-static DSPfract history2[FIR_ORDER] = { FRACT_NUM(0.0) };
+DSPfract history1[FIR_ORDER] = { FRACT_NUM(0.0) };
+DSPfract history2[FIR_ORDER] = { FRACT_NUM(0.0) };
 
 DSPfract saturation(DSPfract in)
 {
@@ -129,16 +130,18 @@ void initGainProcessing(DSPfract preGainValue)
 }
 
 
-
-void gainProcessing(DSPfract pIn[][BLOCK_SIZE], DSPfract pOut[][BLOCK_SIZE])
+#ifdef GAINPROCESSING_ASM
+extern void gainProcessing(__memY DSPfract pIn[][BLOCK_SIZE],__memY DSPfract pOut[][BLOCK_SIZE]);
+#else
+void gainProcessing(__memY DSPfract pIn[][BLOCK_SIZE],__memY DSPfract pOut[][BLOCK_SIZE])
 {
 
-	DSPfract* samplePtrIn = *pIn;
-	DSPfract* samplePtrOut = *pOut;
-	DSPfract* lsSamplePtr = *(pOut + LS_CH);
-	DSPfract* rsSamplePtr = *(pOut + RS_CH);
-	DSPfract* centerSamplePtr = *(pOut + CENTER_CH);
-	DSPfract* lfeSamplePtr = *(pOut + LFE_CH);
+	__memY DSPfract* samplePtrIn = *pIn;
+	__memY DSPfract* samplePtrOut = *pOut;
+	__memY DSPfract* lsSamplePtr = *(pOut + LS_CH);
+	__memY DSPfract* rsSamplePtr = *(pOut + RS_CH);
+	__memY DSPfract* centerSamplePtr = *(pOut + CENTER_CH);
+	__memY DSPfract* lfeSamplePtr = *(pOut + LFE_CH);
 
 	DSPint j;
 
@@ -149,13 +152,13 @@ void gainProcessing(DSPfract pIn[][BLOCK_SIZE], DSPfract pOut[][BLOCK_SIZE])
 		// second stage, set L channel out
 		*samplePtrOut = *samplePtrIn;
 
-		if (*outputMode == '0')
+		if (outputMode == 0)
 		{
 			// add processed sampled to the center output channel
 			*centerSamplePtr = *samplePtrOut;
 		}
 
-		if (*outputMode == '0' || *outputMode == '2')
+		if (outputMode == 0 || outputMode == 2)
 		{
 			// apply fir on left channel
 			//DSPaccum accum = fir_basic(*samplePtrIn, history1);
@@ -189,13 +192,13 @@ void gainProcessing(DSPfract pIn[][BLOCK_SIZE], DSPfract pOut[][BLOCK_SIZE])
 		// second stage, set R channel out
 		*samplePtrOut = *samplePtrIn;
 
-		if (*outputMode == '0')
+		if (outputMode == 0)
 		{
 			// add processed sampled to the center output channel
 			*centerSamplePtr = *centerSamplePtr  + *samplePtrOut;
 		}
 
-		if (*outputMode == '0' || *outputMode == '2')
+		if (outputMode == 0 || outputMode == 2)
 		{
 			// apply fir on right channel
 			*rsSamplePtr = fir_basic(*samplePtrIn, history2);
@@ -210,6 +213,7 @@ void gainProcessing(DSPfract pIn[][BLOCK_SIZE], DSPfract pOut[][BLOCK_SIZE])
 		lfeSamplePtr++;
 	}
 }
+#endif
 
 int main(int argc, char *argv[])
  {
@@ -227,9 +231,7 @@ int main(int argc, char *argv[])
     DSPint i;
     DSPint j;
 
-    outputMode = argv[3];
-    printf("%c", outputMode);
-    enable = argv[2];
+    outputMode = 0;//argv[3]-68;
 
 	//init channel buffers
 	for(i=0; i<MAX_NUM_CHANNEL; i++)
@@ -264,17 +266,17 @@ int main(int argc, char *argv[])
 	//-------------------------------------------------
 	strcpy(WavOutputName,argv[1]);
 
-	if (*outputMode == '1')
+	if (outputMode == 1)
 	{
 		/* Set number of chanels to 2, left and right */
 		outChannels = OUTPUT_NUM_CHANNELS_2_0_0;
 	}
-	else if (*outputMode == '2')
+	else if (outputMode == 2)
 	{
 		/* Set number of channels to 4, left right ls and rs */
 		outChannels = OUTPUT_NUM_CHANNELS_2_2_0;
 	}
-	else if (*outputMode == '0')
+	else if (outputMode == 0)
 	{
 			/* Set number of channels to 6, left right ls rs center and lfe */
 		outChannels = OUTPUT_NUM_CHANNELS_3_2_1;
@@ -311,12 +313,11 @@ int main(int argc, char *argv[])
         			sampleBuffer[k][j] = rbits(sample);
 				}
 			}
-			if (i == 20)
+			enable = 1;//argv[2]-68;
+			if (enable == 1)
 			{
-				int a = 2;
+				gainProcessing(sampleBuffer, sampleBuffer);
 			}
-			// pozvati processing funkciju ovde
-			gainProcessing(sampleBuffer, sampleBuffer);
 
 			for(j=0; j<BLOCK_SIZE; j++)
 			{

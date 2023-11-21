@@ -46,6 +46,7 @@
 #define CENTER_CH 4
 #define LFE_CH 5
 
+#define GAINPROCESSING_ASM
 
 /* DSP type definitions */
 

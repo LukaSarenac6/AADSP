@@ -1,0 +1,251 @@
+_GAINPROCESSING_ASM	#otkomentarisati za asm poziv
+
+
+	.if defined (_GAINPROCESSING_ASM)
+	
+_INPUT_NUM_CHANNELS .equ 2
+_LEFT_CH .equ 0
+_RIGHT_CH .equ 1
+_LS_CH .equ 2
+_RS_CH .equ 3
+_CENTER_CH .equ 4
+_LFE_CH .equ 5
+_BLOCK_SIZE .equ 16
+_FIR_ORDER .equ 50
+
+	.public _gainProcessing
+	.extern _preGain
+	.extern _fir_basic
+	.extern _outputMode
+	.extern _firCoeffs
+	.extern _history1
+	.extern _history2	
+	.code_ovly
+	
+_gainProcessing:
+
+	# put i2 and i3 to the stack
+	ymem[i7] = i2; i7+=1
+	ymem[i7] = i3; i7+=1
+	# __memY DSPfract* samplePtrIn = *pIn;			->	i0
+	# __memY DSPfract* samplePtrOut = *pOut;			->	i1
+	# __memY DSPfract* lsSamplePtr = *(pOut + LS_CH);
+	i4 = i1 + (_LS_CH * _BLOCK_SIZE)
+	# __memY DSPfract* centerSamplePtr = *(pOut + CENTER_CH);
+	i5 = i1 + (_CENTER_CH * _BLOCK_SIZE)
+	# __memY DSPfract* lfeSamplePtr = *(pOut + LFE_CH);
+	i2 = i1 + (_LFE_CH * _BLOCK_SIZE)	
+	i3 = i1
+	
+	#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!LEFT CHANNEL PROCESSING!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	#for (j = 0; j < BLOCK_SIZE; j++)
+	do(_BLOCK_SIZE),>loop
+	
+		#first stage, apply constant pre-Gain
+ 		#*samplePtrIn = *samplePtrIn * preGain;
+ 		x0 = ymem[i0]
+ 		y0 = xmem[_preGain]
+ 		a0 = x0 * y0
+		# second stage, set L channel out
+		#*samplePtrOut = *samplePtrIn;		
+		ymem[i1] = a0
+		i1+=1			
+		
+		#if (*outputMode == '0')
+		a1 = xmem[_outputMode]				 
+		#uhalfword(a1) = (1)			#to test center channel
+		uhalfword(b1) = (1)					# set b1 to 1 for if statement
+		a1 - b1
+		if(a < 0)jmp>outputMode3_2_1		# if a == 0 mode -> 3_2_1
+											#else mode is 2_2_0 or 2_0_0
+			a1 - b1
+			if(a == 0)jmp>outputMode2_0_0	# if a == 1 mode -> 2_0_0
+				# else mode -> 2_2_0
+				
+				#*lsSamplePtr = fir_basic(*samplePtrIn, history1);
+				call _fir_basic1
+				nop
+				i4+=1
+				jmp>loop
+%outputMode3_2_1:
+
+		#*lsSamplePtr = fir_basic(*samplePtrIn, history1);		
+		call _fir_basic1
+		nop
+		
+		#*centerSamplePtr = *samplePtrOut;
+		ymem[i5] = a0
+	 	i5+=1
+		
+		#*lfeSamplePtr = *lsSamplePtr;
+		a0 = ymem[i4]
+		i4+=1
+		ymem[i2] = a0
+		i2+=1
+		
+		jmp>loop
+		
+%outputMode2_0_0:	
+		#*centerSamplePtr = *samplePtrOut;		CENTER CHANNEL TEST
+		#ymem[i5] = a0
+	 	#i5+=1
+			
+%loop:	i0+=1
+		nop
+		
+	#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!RIGHT CHANNEL PROCESSING!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	
+	#__memY DSPfract* rsSamplePtr = *(pOut + RS_CH);
+	i4 = i3 + (_RS_CH * _BLOCK_SIZE)		#insted of ls chennel now put rs channel pointer to i4
+	
+	i5 = i3 + (_CENTER_CH * _BLOCK_SIZE)	#center channel and lfe pointers moved back
+	i2 = i3 + (_LFE_CH * _BLOCK_SIZE)
+	
+	#for (j = 0; j < BLOCK_SIZE; j++)
+	do(_BLOCK_SIZE),>loop
+	
+											#first stage, apply constant pre-Gain
+ 		#*samplePtrIn = *samplePtrIn * preGain;
+ 		x0 = ymem[i0]
+ 		y0 = xmem[_preGain]
+ 		a0 = x0 * y0
+											# second stage, set R channel out
+		#*samplePtrOut = *samplePtrIn;		
+		ymem[i1] = a0; i1+=1			
+		
+		#if (*outputMode == '0')
+		a1 = xmem[_outputMode]			# read outputMode and put it in a1
+		#uhalfword(a1) = (1)			# to test center channel
+		uhalfword(b1) = (1)					# set b1 to 1 for if statement TO DO: pomeriti gore iznade do
+		a1 - b1
+		if (a < 0) jmp>outputMode3_2_1		# if a == 0 mode -> 3_2_1
+											#else mode is 2_2_0 or 2_0_0
+			a1 - b1
+			if (a == 0) jmp>outputMode2_0_0	# if a == 1 mode -> 2_0_0
+											# else mode -> 2_2_0
+				
+				#*rsSamplePtr = fir_basic(*samplePtrIn, history2);
+				call _fir_basic2
+				nop 		#TO DO: uraditi fir za desni kanal
+				i4+=1
+				jmp>loop
+%outputMode3_2_1:
+
+		#*lsSamplePtr = fir_basic(*samplePtrIn, history1);		
+		call _fir_basic2						#TO DO: uraditi fir za desni kanal, mozda a0h?
+		nop
+
+		#*centerSamplePtr = *centerSamplePtr + *samplePtrOut;
+		b0 = ymem[i5]
+		a0 = a0 + b0
+		ymem[i5] = a0; i5+=1				
+		
+		#*lfeSamplePtr = *lfeSamplePtr + *rsSamplePtr;
+		a0 = ymem[i4]; i4+=1
+		a1 = ymem[i2]
+		a1 = a1 + a0
+		ymem[i2] = a1; i2+=1
+		
+		jmp>loop
+		
+%outputMode2_0_0:	
+		#b0 = ymem[i5]						CENTER CHANNEL TEST
+		#a0 = a0 + b0
+		#ymem[i5] = a0; i5+=1	
+%loop:	i0+=1
+		nop
+
+	#return the stack to its original state
+	i7-=1
+	i3 = ymem[i7]
+	i7-=1
+	i2 = ymem[i7]
+	
+	ret
+	
+_fir_basic1:			#	*input = i4, *history = i2
+	ymem[i7] = i6; i7+=1
+	ymem[i7] = i2; i7+=1
+	
+	#DSPfract* coefs = firCoeffs;
+	i6 = (_firCoeffs)
+	i2 = (_history1 + _FIR_ORDER - 2)
+
+	uhalfword(b0) = (0)
+
+	#for (i = FIR_ORDER - 2; i >= 0; i--)
+	do(_FIR_ORDER-1),>loop
+	#	*(history + i + 1) = *(history + i);												
+		x1 = xmem[i2]
+		i2+=1								#*(history + i)
+		xmem[i2] = x1
+		i2-=2
+%loop: nop
+	i2 = (_history1)
+	#/* store input at the beginning of the delay line */
+	#*history = input;
+	x1 = ymem[i0]											# put input in a1
+	xmem[i2] = x1											# put input in history buff
+	
+	#/* calc FIR */
+	#for (i = 0; i < FIR_ORDER; i++)
+	do (_FIR_ORDER),>loop2
+	#		//DSPaccum mul = *(coefs + i) * *(history + i);
+		x0 = xmem[i6]; i6+=1	#		coefs++;
+		y0 = xmem[i2]; i2+=1	#		history++;
+	#		//retAccum = retAccum + mul;
+		b0 += x0 * y0
+		
+	#		retAccum = retAccum + (*coefs * *history);
+%loop2:	nop
+	#return retAccum;		retAccum -> ymem[i4]
+	ymem[i4] = b0; 
+	i7-=1
+	i2 = ymem[i7]
+	i7-=1
+	i6 = ymem[i7]
+	ret	
+	
+_fir_basic2:			#	*input = i4, *history = i2
+	ymem[i7] = i6; i7+=1
+	ymem[i7] = i2; i7+=1
+	#DSPfract* coefs = firCoeffs;
+	i6 = (_firCoeffs)
+	i2 = (_history2 + _FIR_ORDER - 2)
+
+	uhalfword(b0) = (0)
+
+	#for (i = FIR_ORDER - 2; i >= 0; i--)
+	do(_FIR_ORDER-1),>loop
+	#	*(history + i + 1) = *(history + i);												
+		x1 = xmem[i2]
+		i2+=1								#*(history + i)
+		xmem[i2] = x1
+		i2-=2
+%loop: nop
+	i2 = (_history2)
+	#/* store input at the beginning of the delay line */
+	#*history = input;
+	x1 = ymem[i0]											# put input in a1
+	xmem[i2] = x1											# put input in history buff
+	
+	#/* calc FIR */
+	#for (i = 0; i < FIR_ORDER; i++)
+	do (_FIR_ORDER),>loop2
+	#		//DSPaccum mul = *(coefs + i) * *(history + i);
+		x0 = xmem[i6]; i6+=1	#		coefs++;
+		y0 = xmem[i2]; i2+=1	#		history++;
+	#		//retAccum = retAccum + mul;
+		b0 += x0 * y0
+		 
+	#		retAccum = retAccum + (*coefs * *history);
+%loop2:	nop
+	#return retAccum;		retAccum -> ymem[i4]
+	ymem[i4] = b0;
+	i7-=1
+	i2 = ymem[i7]
+	i7-=1
+	i6 = ymem[i7]
+	ret	
+	
+	.endif
